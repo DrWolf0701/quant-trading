@@ -52,44 +52,89 @@ with st.sidebar:
     - 死叉（短均線跌破長均線）→ 賣出
     """)
 
-# 獲取數據 - 為Streamlit Cloud優化
+# 獲取數據 - 使用多個數據源
 @st.cache_data
 def get_stock_data(symbol, period):
     import time
+    import requests
+    
+    # 嘗試方法1: 直接用 requests 從 Yahoo Finance API
+    try:
+        # 計算日期範圍
+        end_date = pd.Timestamp.now()
+        if period == "1mo":
+            start_date = end_date - pd.Timedelta(days=30)
+        elif period == "3mo":
+            start_date = end_date - pd.Timedelta(days=90)
+        elif period == "6mo":
+            start_date = end_date - pd.Timedelta(days=180)
+        elif period == "1y":
+            start_date = end_date - pd.Timedelta(days=365)
+        elif period == "2y":
+            start_date = end_date - pd.Timedelta(days=730)
+        else:
+            start_date = end_date - pd.Timedelta(days=365)
+            
+        # Yahoo Finance URL
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+        params = {
+            "period1": int(start_date.timestamp()),
+            "period2": int(end_date.timestamp()),
+            "interval": "1d"
+        }
+        
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        }
+        
+        response = requests.get(url, params=params, headers=headers, timeout=15)
+        data = response.json()
+        
+        if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
+            result = data["chart"]["result"][0]
+            timestamps = result["timestamp"]
+            quotes = result["indicators"]["quote"][0]
+            
+            df = pd.DataFrame({
+                'Open': quotes['open'],
+                'High': quotes['high'],
+                'Low': quotes['low'],
+                'Close': quotes['close'],
+                'Volume': quotes['volume']
+            }, index=pd.to_datetime(timestamps, unit='s'))
+            df.index.name = 'Date'
+            
+            if len(df) > 10:
+                return df
+    except Exception as e:
+        pass
+    
+    # 嘗試方法2: yfinance
     try:
         import yfinance as yf
-        
-        # 先嘗試一次獲取數據
-        try:
-            df = yf.download(symbol, period=period, progress=False, timeout=15)
-            if df is not None and len(df) > 10:
-                return df
-        except:
-            pass
-            
-        # Streamlit Cloud可能連不上，統一使用模擬數據
-        st.info(f"📊 顯示 {symbol} 模擬數據（演示用）")
-        dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='B')
-        
-        # 根據代碼產生不同的隨機價格
-        np.random.seed(sum(ord(c) for c in symbol))
-        base_price = 50 + sum(ord(c) for c in symbol) % 200
-        trend = (sum(ord(c) for c in symbol) % 50) / 100  # 趨勢
-        prices = base_price + np.cumsum(np.random.randn(252) * 2 + trend)
-        
-        df = pd.DataFrame({
-            'Open': prices * (0.98 + np.random.randn(252) * 0.01),
-            'High': prices * (1.00 + np.random.randn(252) * 0.02),
-            'Low': prices * (0.96 + np.random.randn(252) * 0.02),
-            'Close': prices,
-            'Volume': np.random.randint(1000000, 50000000, 252)
-        }, index=dates)
-        df.index.name = 'Date'
-        return df
-            
-    except Exception as e:
-        st.error(f"獲取數據失敗: {e}")
-        return None
+        df = yf.download(symbol, period=period, progress=False, timeout=10)
+        if df is not None and len(df) > 10:
+            return df
+    except:
+        pass
+    
+    # 如果都失敗，使用模擬數據
+    st.info(f"📊 顯示 {symbol} 模擬數據")
+    dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='B')
+    np.random.seed(sum(ord(c) for c in symbol))
+    base_price = 50 + sum(ord(c) for c in symbol) % 200
+    trend = (sum(ord(c) for c in symbol) % 50) / 100
+    prices = base_price + np.cumsum(np.random.randn(252) * 2 + trend)
+    
+    df = pd.DataFrame({
+        'Open': prices * (0.98 + np.random.randn(252) * 0.01),
+        'High': prices * (1.00 + np.random.randn(252) * 0.02),
+        'Low': prices * (0.96 + np.random.randn(252) * 0.02),
+        'Close': prices,
+        'Volume': np.random.randint(1000000, 50000000, 252)
+    }, index=dates)
+    df.index.name = 'Date'
+    return df
 
 # 計算技術指標
 def calculate_indicators(df, short_period, long_period):
