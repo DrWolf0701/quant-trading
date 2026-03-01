@@ -58,6 +58,9 @@ def get_stock_data(symbol, period):
     try:
         stock = yf.Ticker(symbol)
         df = stock.history(period=period)
+        if df.empty:
+            # 嘗試用 download 方式
+            df = yf.download(symbol, period=period, progress=False)
         return df
     except Exception as e:
         st.error(f"獲取數據失敗: {e}")
