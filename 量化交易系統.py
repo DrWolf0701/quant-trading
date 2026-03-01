@@ -55,16 +55,20 @@ with st.sidebar:
 # 獲取數據
 @st.cache_data
 def get_stock_data(symbol, period):
+    import time
     try:
-        # 確保代碼格式正確
-        if not symbol.endswith('.US'):
-            symbol = symbol + '.US'
+        # 清除可能殘留的 session
+        import yfinance as yf
         
-        stock = yf.Ticker(symbol)
-        df = stock.history(period=period)
+        # 嘗試不同的方式獲取數據
+        df = yf.download(symbol, period=period, progress=False, timeout=30)
+        
         if df.empty:
-            # 嘗試用 download 方式
-            df = yf.download(symbol, period=period, progress=False)
+            # 如果失敗，嘗試用另一種方式
+            time.sleep(1)
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period=period)
+            
         return df
     except Exception as e:
         st.error(f"獲取數據失敗: {e}")
