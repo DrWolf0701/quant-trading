@@ -57,26 +57,31 @@ with st.sidebar:
 def get_stock_data(symbol, period):
     import time
     import random
+    import logging
     try:
         import yfinance as yf
         
-        # 嘗試獲取數據
-        try:
-            df = yf.download(symbol, period=period, progress=False, timeout=30)
-            if not df.empty:
-                return df
-        except:
-            pass
-            
-        # 如果失敗，嘗試用另一種方式
-        try:
-            time.sleep(1)
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period=period)
-            if not df.empty:
-                return df
-        except:
-            pass
+        # 嘗試獲取數據 (最多3次)
+        for attempt in range(3):
+            try:
+                df = yf.download(symbol, period=period, progress=False, timeout=30)
+                if df is not None and len(df) > 0:
+                    # 檢查是否有有效數據
+                    if 'Close' in df.columns:
+                        return df
+            except Exception as e:
+                time.sleep(2)
+                
+        # 如果第一種方式失敗，嘗試用 Ticker
+        for attempt in range(2):
+            try:
+                time.sleep(1)
+                ticker = yf.Ticker(symbol)
+                df = ticker.history(period=period)
+                if df is not None and len(df) > 0:
+                    return df
+            except:
+                time.sleep(1)
             
         # 如果都失敗，生成模擬數據（演示用）
         st.warning(f"無法獲取 {symbol} 真實數據，顯示模擬數據")
