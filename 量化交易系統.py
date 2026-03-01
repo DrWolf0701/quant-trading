@@ -56,6 +56,10 @@ with st.sidebar:
 @st.cache_data
 def get_stock_data(symbol, period):
     try:
+        # 確保代碼格式正確
+        if not symbol.endswith('.US'):
+            symbol = symbol + '.US'
+        
         stock = yf.Ticker(symbol)
         df = stock.history(period=period)
         if df.empty:
