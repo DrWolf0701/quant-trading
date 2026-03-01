@@ -1,6 +1,6 @@
+streamlit==1.39.0
 yfinance
 pandas
 numpy
 plotly
-streamlit
 weasyprint
