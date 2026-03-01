@@ -52,50 +52,37 @@ with st.sidebar:
     - 死叉（短均線跌破長均線）→ 賣出
     """)
 
-# 獲取數據
+# 獲取數據 - 為Streamlit Cloud優化
 @st.cache_data
 def get_stock_data(symbol, period):
     import time
-    import random
-    import logging
     try:
         import yfinance as yf
         
-        # 嘗試獲取數據 (最多3次)
-        for attempt in range(3):
-            try:
-                df = yf.download(symbol, period=period, progress=False, timeout=30)
-                if df is not None and len(df) > 0:
-                    # 檢查是否有有效數據
-                    if 'Close' in df.columns:
-                        return df
-            except Exception as e:
-                time.sleep(2)
-                
-        # 如果第一種方式失敗，嘗試用 Ticker
-        for attempt in range(2):
-            try:
-                time.sleep(1)
-                ticker = yf.Ticker(symbol)
-                df = ticker.history(period=period)
-                if df is not None and len(df) > 0:
-                    return df
-            except:
-                time.sleep(1)
+        # 先嘗試一次獲取數據
+        try:
+            df = yf.download(symbol, period=period, progress=False, timeout=15)
+            if df is not None and len(df) > 10:
+                return df
+        except:
+            pass
             
-        # 如果都失敗，生成模擬數據（演示用）
-        st.warning(f"無法獲取 {symbol} 真實數據，顯示模擬數據")
-        dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='D')
-        np.random.seed(hash(symbol) % 10000)
-        base_price = 100 + hash(symbol) % 200
-        prices = base_price + np.cumsum(np.random.randn(252) * 2)
+        # Streamlit Cloud可能連不上，統一使用模擬數據
+        st.info(f"📊 顯示 {symbol} 模擬數據（演示用）")
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='B')
+        
+        # 根據代碼產生不同的隨機價格
+        np.random.seed(sum(ord(c) for c in symbol))
+        base_price = 50 + sum(ord(c) for c in symbol) % 200
+        trend = (sum(ord(c) for c in symbol) % 50) / 100  # 趨勢
+        prices = base_price + np.cumsum(np.random.randn(252) * 2 + trend)
         
         df = pd.DataFrame({
-            'Open': prices * 0.99,
-            'High': prices * 1.02,
-            'Low': prices * 0.98,
+            'Open': prices * (0.98 + np.random.randn(252) * 0.01),
+            'High': prices * (1.00 + np.random.randn(252) * 0.02),
+            'Low': prices * (0.96 + np.random.randn(252) * 0.02),
             'Close': prices,
-            'Volume': np.random.randint(1000000, 10000000, 252)
+            'Volume': np.random.randint(1000000, 50000000, 252)
         }, index=dates)
         df.index.name = 'Date'
         return df
