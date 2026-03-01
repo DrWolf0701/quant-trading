@@ -56,20 +56,45 @@ with st.sidebar:
 @st.cache_data
 def get_stock_data(symbol, period):
     import time
+    import random
     try:
-        # 清除可能殘留的 session
         import yfinance as yf
         
-        # 嘗試不同的方式獲取數據
-        df = yf.download(symbol, period=period, progress=False, timeout=30)
-        
-        if df.empty:
-            # 如果失敗，嘗試用另一種方式
+        # 嘗試獲取數據
+        try:
+            df = yf.download(symbol, period=period, progress=False, timeout=30)
+            if not df.empty:
+                return df
+        except:
+            pass
+            
+        # 如果失敗，嘗試用另一種方式
+        try:
             time.sleep(1)
             ticker = yf.Ticker(symbol)
             df = ticker.history(period=period)
+            if not df.empty:
+                return df
+        except:
+            pass
             
+        # 如果都失敗，生成模擬數據（演示用）
+        st.warning(f"無法獲取 {symbol} 真實數據，顯示模擬數據")
+        dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='D')
+        np.random.seed(hash(symbol) % 10000)
+        base_price = 100 + hash(symbol) % 200
+        prices = base_price + np.cumsum(np.random.randn(252) * 2)
+        
+        df = pd.DataFrame({
+            'Open': prices * 0.99,
+            'High': prices * 1.02,
+            'Low': prices * 0.98,
+            'Close': prices,
+            'Volume': np.random.randint(1000000, 10000000, 252)
+        }, index=dates)
+        df.index.name = 'Date'
         return df
+            
     except Exception as e:
         st.error(f"獲取數據失敗: {e}")
         return None
