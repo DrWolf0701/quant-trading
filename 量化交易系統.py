@@ -26,7 +26,7 @@ with st.sidebar:
     st.header("⚙️ 參數設定")
     
     # 股票選擇
-    stock_symbol = st.text_input("股票代碼", value="GOOGL")
+    stock_symbol = st.text_input("股票代碼", value="SPY")
     
     # 時間範圍
     date_range = st.selectbox(
