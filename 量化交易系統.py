@@ -18,7 +18,61 @@ import datetime
 # 頁面設定
 st.set_page_config(page_title="美股量化交易系統", layout="wide")
 
+# 股票代碼列表
+STOCKS = ['BRK-B', 'RKLB', 'DJCO']
+
 st.title("📈 美股量化交易系統")
+st.markdown("---")
+
+# 訊號檢查功能
+st.header("🔔 買賣訊號檢查")
+st.info("監控股票：BRK-B, RKLB, DJCO")
+
+# 顯示訊號
+signal_data = []
+for symbol in STOCKS:
+    try:
+        df = yf.download(symbol, period="3mo", progress=False, timeout=10)
+        if df is not None and len(df) > 20:
+            # 計算均線
+            df['SMA_20'] = df['Close'].rolling(window=20).mean()
+            df['SMA_50'] = df['Close'].rolling(window=50).mean()
+            
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
+            
+            # 判斷訊號
+            if latest['SMA_20'] > latest['SMA_50'] and prev['SMA_20'] <= prev['SMA_50']:
+                signal = "🟢 買入"
+            elif latest['SMA_20'] < latest['SMA_50'] and prev['SMA_20'] >= prev['SMA_50']:
+                signal = "🔴 賣出"
+            elif latest['SMA_20'] > latest['SMA_50']:
+                signal = "📈 持有"
+            else:
+                signal = "📉 觀望"
+            
+            signal_data.append({
+                "股票": symbol,
+                "現價": f"${latest['Close']:.2f}",
+                "MA20": f"${latest['SMA_20']:.2f}",
+                "MA50": f"${latest['SMA_50']:.2f}",
+                "訊號": signal
+            })
+    except:
+        signal_data.append({
+            "股票": symbol,
+            "現價": "無法獲取",
+            "MA20": "-",
+            "MA50": "-",
+            "訊號": "⚠️ 請稍後重試"
+        })
+
+# 顯示表格
+if signal_data:
+    import pandas as pd
+    df_signal = pd.DataFrame(signal_data)
+    st.table(df_signal)
+
 st.markdown("---")
 
 # 側邊欄 - 參數設定
