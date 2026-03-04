@@ -25,7 +25,6 @@ st.title("📈 美股量化交易系統")
 st.markdown("---")
 
 # 訊號檢查功能
-st.header("🔔 買賣訊號檢查")
 
 # 顯示訊號
 signal_data = []
