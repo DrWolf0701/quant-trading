@@ -26,7 +26,6 @@ st.markdown("---")
 
 # 訊號檢查功能
 st.header("🔔 買賣訊號檢查")
-st.info("監控股票：BRK-B, RKLB, DJCO")
 
 # 顯示訊號
 signal_data = []
