@@ -69,8 +69,7 @@ for symbol in STOCKS:
 if signal_data:
     import pandas as pd
     df_signal = pd.DataFrame(signal_data)
-    st.table(df_signal)
-
+    
 st.markdown("---")
 
 # 側邊欄 - 參數設定
