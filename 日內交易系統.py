@@ -143,6 +143,7 @@ def get_intraday_data(symbol, period="5d", interval="5m"):
             df = df.dropna()
             
             if len(df) > 10:
+                st.success(f"✅ 顯示 {symbol} 真實數據")
                 return df
         
         # 如果 API 失敗，使用模擬數據
