@@ -52,17 +52,66 @@ with st.sidebar:
     initial_capital = st.number_input("初始資金 ($)", value=10000)
     position_size = st.slider("倉位比例 (%)", 10, 100, 50)
 
+# 模擬數據生成函數
+def generate_mock_data(symbol, period="5d", interval="5m"):
+    """生成模擬數據（當真實數據獲取失敗時使用）"""
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, timedelta
+    
+    # 根據股票代碼生成不同的基準價格
+    base_prices = {
+        "AAPL": 175, "GOOGL": 140, "MSFT": 370, "AMZN": 178, 
+        "TSLA": 245, "NVDA": 480, "META": 380, "BRK-B": 500,
+        "RKLB": 18, "DJCO": 520, "GGR": 4.5, "BYDDY": 12
+    }
+    base_price = base_prices.get(symbol.upper(), 100)
+    
+    # 產生時間序列
+    now = datetime.now()
+    if interval == "5m":
+        freq = "5T"
+        periods = 390 * 5  # 5天 x 每天390個5分鐘
+    else:
+        freq = "15T"
+        periods = 130 * 5
+    
+    dates = pd.date_range(end=now, periods=periods, freq=freq)
+    
+    # 隨機漫步生成價格
+    np.random.seed(hash(symbol) % 10000)
+    returns = np.random.normal(0.0001, 0.002, periods)
+    prices = base_price * np.exp(np.cumsum(returns))
+    
+    # 生成 OHLCV 數據
+    df = pd.DataFrame({
+        'Open': prices * (1 + np.random.uniform(-0.002, 0.002, periods)),
+        'High': prices * (1 + np.random.uniform(0.001, 0.005, periods)),
+        'Low': prices * (1 + np.random.uniform(-0.005, -0.001, periods)),
+        'Close': prices,
+        'Volume': np.random.randint(100000, 5000000, periods)
+    }, index=dates)
+    
+    df.index.name = 'Datetime'
+    return df
+
 # 獲取數據
 @st.cache_data
 def get_intraday_data(symbol, period="5d", interval="5m"):
-    """獲取日內數據"""
+    """獲取日內數據（包含模擬數據備援）"""
     try:
         stock = yf.Ticker(symbol)
         df = stock.history(period=period, interval=interval)
+        
+        # 檢查是否有有效數據
+        if df is None or len(df) < 10:
+            st.warning(f"⚠️ 無法獲取 {symbol} 真實數據，使用模擬數據展示功能")
+            return generate_mock_data(symbol, period, interval)
+        
         return df
     except Exception as e:
-        st.error(f"獲取數據失敗: {e}")
-        return None
+        st.warning(f"⚠️ 獲取數據失敗，使用模擬數據展示功能: {e}")
+        return generate_mock_data(symbol, period, interval)
 
 # 計算技術指標
 def calculate_indicators(df):
