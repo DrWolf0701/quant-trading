@@ -95,20 +95,60 @@ def generate_mock_data(symbol, period="5d", interval="5m"):
     df.index.name = 'Datetime'
     return df
 
-# 獲取數據
+# 獲取數據（使用直接 HTTP API）
 @st.cache_data
 def get_intraday_data(symbol, period="5d", interval="5m"):
-    """獲取日內數據（包含模擬數據備援）"""
+    """獲取日內數據（直接 HTTP API + 模擬數據備援）"""
+    import requests
+    import time
+    
+    # 計算時間範圍
+    now = pd.Timestamp.now()
+    if period == "5d":
+        start = now - pd.Timedelta(days=7)
+    elif period == "1mo":
+        start = now - pd.Timedelta(days=35)
+    else:
+        start = now - pd.Timedelta(days=7)
+    
+    # Yahoo Finance API
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    params = {
+        "period1": int(start.timestamp()),
+        "period2": int(now.timestamp()),
+        "interval": interval
+    }
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
     try:
-        stock = yf.Ticker(symbol)
-        df = stock.history(period=period, interval=interval)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        data = response.json()
         
-        # 檢查是否有有效數據
-        if df is None or len(df) < 10:
-            st.warning(f"⚠️ 無法獲取 {symbol} 真實數據，使用模擬數據展示功能")
-            return generate_mock_data(symbol, period, interval)
+        if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
+            result = data["chart"]["result"][0]
+            timestamps = result["timestamp"]
+            quotes = result["indicators"]["quote"][0]
+            
+            df = pd.DataFrame({
+                'Open': quotes['open'],
+                'High': quotes['high'],
+                'Low': quotes['low'],
+                'Close': quotes['close'],
+                'Volume': quotes['volume']
+            }, index=pd.to_datetime(timestamps, unit='s'))
+            
+            df = df.dropna()
+            
+            if len(df) > 10:
+                return df
         
-        return df
+        # 如果 API 失敗，使用模擬數據
+        st.warning(f"⚠️ 無法獲取 {symbol} 真實數據，使用模擬數據展示功能")
+        return generate_mock_data(symbol, period, interval)
+        
     except Exception as e:
         st.warning(f"⚠️ 獲取數據失敗，使用模擬數據展示功能: {e}")
         return generate_mock_data(symbol, period, interval)
