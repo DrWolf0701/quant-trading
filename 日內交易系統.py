@@ -7,6 +7,10 @@ Day Trading Quantitative System
 2. 反轉策略 (Reversal) - RSI超賣時買入
 3. 區間策略 (Range) - 支撐買入、壓力賣出
 4. 均線策略 (MA Crossover) - 短均線穿越長均線
+5. Gap and Go - 跳空缺口後順勢交易
+6. 動能交易 (Momentum) - 強勢股順勢追蹤
+7. VWAP 回歸 (VWAP Regression) - 價格回歸 VWAP
+8. 開盤區間突破 (Opening Range) - 開盤後突破區間進場
 """
 
 import streamlit as st
@@ -28,7 +32,8 @@ with st.sidebar:
     
     strategy = st.selectbox(
         "交易策略",
-        ["突破策略 (Breakout)", "反轉策略 (Reversal)", "區間策略 (Range)", "均線策略 (MA Crossover)"]
+        ["突破策略 (Breakout)", "反轉策略 (Reversal)", "區間策略 (Range)", "均線策略 (MA Crossover)", 
+         "Gap and Go", "動能交易 (Momentum)", "VWAP 回歸", "開盤區間突破"]
     )
     
     st.markdown("---")
@@ -44,6 +49,21 @@ with st.sidebar:
     
     elif strategy == "區間策略 (Range)":
         range_period = st.slider("區間週期", 10, 60, 20)
+    
+    elif strategy == "Gap and Go":
+        gap_threshold = st.slider("跳空缺口門檻 (%)", 0.5, 5.0, 1.0)
+        volume_requirement = st.slider("成交量要求 (倍)", 1.0, 3.0, 1.5)
+    
+    elif strategy == "動能交易 (Momentum)":
+        momentum_period = st.slider("動能週期", 5, 30, 14)
+        momentum_threshold = st.slider("動能門檻", 0.5, 5.0, 2.0)
+    
+    elif strategy == "VWAP 回歸":
+        vwap_tolerance = st.slider("VWAP 偏離容差 (%)", 0.1, 2.0, 0.5)
+    
+    elif strategy == "開盤區間突破":
+        opening_range_min = st.slider("開盤區間分鐘", 5, 30, 15)
+        breakout_threshold = st.slider("突破門檻 (%)", 0.2, 2.0, 0.5)
     
     else:  # 均線策略
         fast_ma = st.slider("快速均線", 5, 30, 10)
@@ -244,6 +264,82 @@ def ma_crossover_signals(df, fast=10, slow=50):
     
     return df
 
+# Gap and Go 策略訊號
+def gap_and_go_signals(df, gap_threshold=1.0, volume_mult=1.5):
+    """Gap and Go 策略 - 跳空缺口後順勢交易"""
+    df = df.copy()
+    
+    # 計算開盤跳空
+    df['Prev_Close'] = df['Close'].shift(1)
+    df['Gap'] = ((df['Open'] - df['Prev_Close']) / df['Prev_Close']) * 100
+    
+    # 成交量放大
+    df['Volume_MA'] = df['Volume'].rolling(20).mean()
+    
+    # 買入訊號：向上跳空且成交量放大
+    df['Buy_Signal'] = (df['Gap'] > gap_threshold) & (df['Volume'] > df['Volume_MA'] * volume_mult)
+    
+    # 賣出訊號：收盤跌破開盤
+    df['Sell_Signal'] = df['Close'] < df['Open']
+    
+    return df
+
+# 動能交易策略訊號
+def momentum_signals(df, period=14, threshold=2.0):
+    """動能交易策略 - 順勢追蹤"""
+    df = df.copy()
+    
+    # 計算動能
+    df['Momentum'] = df['Close'] - df['Close'].shift(period)
+    df['Momentum_Pct'] = (df['Close'] - df['Close'].shift(period)) / df['Close'].shift(period) * 100
+    
+    # 買入訊號：動能強勁向上
+    df['Buy_Signal'] = df['Momentum_Pct'] > threshold
+    
+    # 賣出訊號：動能反轉向下
+    df['Sell_Signal'] = df['Momentum_Pct'] < -threshold
+    
+    return df
+
+# VWAP 回歸策略訊號
+def vwap_regression_signals(df, tolerance=0.5):
+    """VWAP 回歸策略 - 價格回歸 VWAP"""
+    df = df.copy()
+    
+    # 計算 VWAP
+    df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (df['Typical_Price'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+    
+    # 偏離度
+    df['VWAP_Deviation'] = ((df['Close'] - df['VWAP']) / df['VWAP']) * 100
+    
+    # 買入訊號：價格低於 VWAP 後回升
+    df['Buy_Signal'] = (df['VWAP_Deviation'] < -tolerance) & (df['VWAP_Deviation'] > df['VWAP_Deviation'].shift(1))
+    
+    # 賣出訊號：價格高於 VWAP 後回落
+    df['Sell_Signal'] = (df['VWAP_Deviation'] > tolerance) & (df['VWAP_Deviation'] < df['VWAP_Deviation'].shift(1))
+    
+    return df
+
+# 開盤區間突破策略訊號
+def opening_range_signals(df, minutes=15, threshold=0.5):
+    """開盤區間突破策略"""
+    df = df.copy()
+    
+    # 計算開盤區間
+    df['Open_Range_High'] = df['High'].rolling(minutes).max()
+    df['Open_Range_Low'] = df['Low'].rolling(minutes).min()
+    
+    # 買入訊號：突破開盤區間高點
+    df['Buy_Signal'] = (df['Close'] > df['Open_Range_High'].shift(1)) & \
+                       ((df['Close'] - df['Open_Range_High'].shift(1)) / df['Open_Range_High'].shift(1) * 100 > threshold)
+    
+    # 賣出訊號：跌破開盤區間低點
+    df['Sell_Signal'] = (df['Close'] < df['Open_Range_Low'].shift(1)) & \
+                        ((df['Open_Range_Low'].shift(1) - df['Close']) / df['Open_Range_Low'].shift(1) * 100 > threshold)
+    
+    return df
+
 # 回測函數
 def backtest(df, strategy_name, initial_capital=10000, position_pct=0.5):
     """回測"""
@@ -361,6 +457,14 @@ if st.button("🔄 執行回測", type="primary"):
                 df = reversal_signals(df, rsi_oversold, rsi_overbought)
             elif strategy == "區間策略 (Range)":
                 df = range_signals(df, range_period)
+            elif strategy == "Gap and Go":
+                df = gap_and_go_signals(df, gap_threshold, volume_requirement)
+            elif strategy == "動能交易 (Momentum)":
+                df = momentum_signals(df, momentum_period, momentum_threshold)
+            elif strategy == "VWAP 回歸":
+                df = vwap_regression_signals(df, vwap_tolerance)
+            elif strategy == "開盤區間突破":
+                df = opening_range_signals(df, opening_range_min, breakout_threshold)
             else:
                 df = ma_crossover_signals(df, fast_ma, slow_ma)
             
