@@ -156,6 +156,7 @@ def get_stock_data(symbol, period):
             df.index.name = 'Date'
             
             if len(df) > 10:
+                st.success(f"✅ 顯示 {symbol} 真實數據")
                 return df
     except Exception as e:
         pass
@@ -165,6 +166,7 @@ def get_stock_data(symbol, period):
         import yfinance as yf
         df = yf.download(symbol, period=period, progress=False, timeout=10)
         if df is not None and len(df) > 10:
+            st.success(f"✅ 顯示 {symbol} 真實數據")
             return df
     except:
         pass
