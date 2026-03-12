@@ -1,6 +1,7 @@
 """
 日內交易策略量化系統
 Day Trading Quantitative System
+更新時間：2026-03-12
 
 策略：
 1. 突破策略 (Breakout) - 突破區間高點買入
