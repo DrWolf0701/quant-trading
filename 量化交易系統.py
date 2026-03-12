@@ -1,10 +1,17 @@
 """
-美股量化交易系統 - Streamlit UI版
-包含：
-1. 數據獲取 (yfinance)
-2. 技術指標計算
-3. 雙均線策略回測
-4. 圖表展示
+日內交易策略量化系統
+Day Trading Quantitative System
+更新時間：2026-03-12
+
+策略：
+1. 突破策略 (Breakout) - 突破區間高點買入
+2. 反轉策略 (Reversal) - RSI超賣時買入
+3. 區間策略 (Range) - 支撐買入、壓力賣出
+4. 均線策略 (MA Crossover) - 短均線穿越長均線
+5. Gap and Go - 跳空缺口後順勢交易
+6. 動能交易 (Momentum) - 強勢股順勢追蹤
+7. VWAP 回歸 (VWAP Regression) - 價格回歸 VWAP
+8. 開盤區間突破 (Opening Range) - 開盤後突破區間進場
 """
 
 import streamlit as st
@@ -12,133 +19,133 @@ import yfinance as yf
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import datetime
+from datetime import datetime, timedelta
+import random
 
-# 頁面設定
-st.set_page_config(page_title="美股量化交易系統", layout="wide")
-
-# 股票代碼列表
-STOCKS = ['BRK-B', 'RKLB', 'DJCO']
-
-st.title("📈 美股量化交易系統")
-st.markdown("---")
-
-# 訊號檢查功能
-
-# 顯示訊號
-signal_data = []
-for symbol in STOCKS:
-    try:
-        df = yf.download(symbol, period="3mo", progress=False, timeout=10)
-        if df is not None and len(df) > 20:
-            # 計算均線
-            df['SMA_20'] = df['Close'].rolling(window=20).mean()
-            df['SMA_50'] = df['Close'].rolling(window=50).mean()
-            
-            latest = df.iloc[-1]
-            prev = df.iloc[-2]
-            
-            # 判斷訊號
-            if latest['SMA_20'] > latest['SMA_50'] and prev['SMA_20'] <= prev['SMA_50']:
-                signal = "🟢 買入"
-            elif latest['SMA_20'] < latest['SMA_50'] and prev['SMA_20'] >= prev['SMA_50']:
-                signal = "🔴 賣出"
-            elif latest['SMA_20'] > latest['SMA_50']:
-                signal = "📈 持有"
-            else:
-                signal = "📉 觀望"
-            
-            signal_data.append({
-                "股票": symbol,
-                "現價": f"${latest['Close']:.2f}",
-                "MA20": f"${latest['SMA_20']:.2f}",
-                "MA50": f"${latest['SMA_50']:.2f}",
-                "訊號": signal
-            })
-    except:
-        signal_data.append({
-            "股票": symbol,
-            "現價": "無法獲取",
-            "MA20": "-",
-            "MA50": "-",
-            "訊號": "⚠️ 請稍後重試"
-        })
-
-# 顯示表格
-if signal_data:
-    import pandas as pd
-    df_signal = pd.DataFrame(signal_data)
-    
-st.markdown("---")
+st.set_page_config(page_title="📊 日內交易系統", layout="wide")
+st.title("📊 日內交易量化系統")
 
 # 側邊欄 - 參數設定
 with st.sidebar:
     st.header("⚙️ 參數設定")
     
-    # 股票選擇
-    stock_symbol = st.text_input("股票代碼", value="SPY")
+    symbol = st.text_input("股票代碼", value="AAPL")
     
-    # 時間範圍
-    date_range = st.selectbox(
-        "時間範圍",
-        ["1mo", "3mo", "6mo", "1y", "2y", "5y"],
-        index=3
+    strategy = st.selectbox(
+        "交易策略",
+        ["突破策略 (Breakout)", "反轉策略 (Reversal)", "區間策略 (Range)", "均線策略 (MA Crossover)", 
+         "Gap and Go", "動能交易 (Momentum)", "VWAP 回歸", "開盤區間突破"]
     )
     
-    # 短均線
-    short_ma = st.slider("短均線天數", 5, 50, 20)
-    
-    # 長均線
-    long_ma = st.slider("長均線天數", 20, 200, 50)
-    
-    # 初始資金
-    initial_capital = st.number_input("初始資金 ($)", value=10000)
-    
     st.markdown("---")
-    st.markdown("### 📊 策略說明")
-    st.info("""
-    **雙均線策略**：
-    - 金叉（短均線突破長均線）→ 買入
-    - 死叉（短均線跌破長均線）→ 賣出
-    """)
-
-# 獲取數據 - 使用多個數據源
-@st.cache_data
-def get_stock_data(symbol, period):
-    import time
-    import requests
+    st.subheader("📈 策略參數")
     
-    # 嘗試方法1: 直接用 requests 從 Yahoo Finance API
+    if strategy == "突破策略 (Breakout)":
+        lookback = st.slider("回顧週期", 5, 60, 20)
+        volume_mult = st.slider("成交量倍數", 1.0, 3.0, 1.5)
+    
+    elif strategy == "反轉策略 (Reversal)":
+        rsi_oversold = st.slider("RSI超賣門檻", 10, 40, 30)
+        rsi_overbought = st.slider("RSI超買門檻", 60, 90, 70)
+    
+    elif strategy == "區間策略 (Range)":
+        range_period = st.slider("區間週期", 10, 60, 20)
+    
+    elif strategy == "Gap and Go":
+        gap_threshold = st.slider("跳空缺口門檻 (%)", 0.5, 5.0, 1.0)
+        volume_requirement = st.slider("成交量要求 (倍)", 1.0, 3.0, 1.5)
+    
+    elif strategy == "動能交易 (Momentum)":
+        momentum_period = st.slider("動能週期", 5, 30, 14)
+        momentum_threshold = st.slider("動能門檻", 0.5, 5.0, 2.0)
+    
+    elif strategy == "VWAP 回歸":
+        vwap_tolerance = st.slider("VWAP 偏離容差 (%)", 0.1, 2.0, 0.5)
+    
+    elif strategy == "開盤區間突破":
+        opening_range_min = st.slider("開盤區間分鐘", 5, 30, 15)
+        breakout_threshold = st.slider("突破門檻 (%)", 0.2, 2.0, 0.5)
+    
+    else:  # 均線策略
+        fast_ma = st.slider("快速均線", 5, 30, 10)
+        slow_ma = st.slider("慢速均線", 20, 100, 50)
+    
+    initial_capital = st.number_input("初始資金 ($)", value=10000)
+    position_size = st.slider("倉位比例 (%)", 10, 100, 50)
+
+# 模擬數據生成函數
+def generate_mock_data(symbol, period="5d", interval="5m"):
+    """生成模擬數據（當真實數據獲取失敗時使用）"""
+    import pandas as pd
+    import numpy as np
+    from datetime import datetime, timedelta
+    
+    # 根據股票代碼生成不同的基準價格
+    base_prices = {
+        "AAPL": 175, "GOOGL": 140, "MSFT": 370, "AMZN": 178, 
+        "TSLA": 245, "NVDA": 480, "META": 380, "BRK-B": 500,
+        "RKLB": 18, "DJCO": 520, "GGR": 4.5, "BYDDY": 12
+    }
+    base_price = base_prices.get(symbol.upper(), 100)
+    
+    # 產生時間序列
+    now = datetime.now()
+    if interval == "5m":
+        freq = "5T"
+        periods = 390 * 5  # 5天 x 每天390個5分鐘
+    else:
+        freq = "15T"
+        periods = 130 * 5
+    
+    dates = pd.date_range(end=now, periods=periods, freq=freq)
+    
+    # 隨機漫步生成價格
+    np.random.seed(hash(symbol) % 10000)
+    returns = np.random.normal(0.0001, 0.002, periods)
+    prices = base_price * np.exp(np.cumsum(returns))
+    
+    # 生成 OHLCV 數據
+    df = pd.DataFrame({
+        'Open': prices * (1 + np.random.uniform(-0.002, 0.002, periods)),
+        'High': prices * (1 + np.random.uniform(0.001, 0.005, periods)),
+        'Low': prices * (1 + np.random.uniform(-0.005, -0.001, periods)),
+        'Close': prices,
+        'Volume': np.random.randint(100000, 5000000, periods)
+    }, index=dates)
+    
+    df.index.name = 'Datetime'
+    return df
+
+# 獲取數據（使用直接 HTTP API）
+@st.cache_data
+def get_intraday_data(symbol, period="5d", interval="5m"):
+    """獲取日內數據（直接 HTTP API + 模擬數據備援）"""
+    import requests
+    import time
+    
+    # 計算時間範圍
+    now = pd.Timestamp.now()
+    if period == "5d":
+        start = now - pd.Timedelta(days=7)
+    elif period == "1mo":
+        start = now - pd.Timedelta(days=35)
+    else:
+        start = now - pd.Timedelta(days=7)
+    
+    # Yahoo Finance API
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+    params = {
+        "period1": int(start.timestamp()),
+        "period2": int(now.timestamp()),
+        "interval": interval
+    }
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+    
     try:
-        # 計算日期範圍
-        end_date = pd.Timestamp.now()
-        if period == "1mo":
-            start_date = end_date - pd.Timedelta(days=30)
-        elif period == "3mo":
-            start_date = end_date - pd.Timedelta(days=90)
-        elif period == "6mo":
-            start_date = end_date - pd.Timedelta(days=180)
-        elif period == "1y":
-            start_date = end_date - pd.Timedelta(days=365)
-        elif period == "2y":
-            start_date = end_date - pd.Timedelta(days=730)
-        else:
-            start_date = end_date - pd.Timedelta(days=365)
-            
-        # Yahoo Finance URL
-        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
-        params = {
-            "period1": int(start_date.timestamp()),
-            "period2": int(end_date.timestamp()),
-            "interval": "1d"
-        }
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
-        }
-        
-        response = requests.get(url, params=params, headers=headers, timeout=15)
+        response = requests.get(url, params=params, headers=headers, timeout=10)
         data = response.json()
         
         if "chart" in data and "result" in data["chart"] and data["chart"]["result"]:
@@ -153,288 +160,411 @@ def get_stock_data(symbol, period):
                 'Close': quotes['close'],
                 'Volume': quotes['volume']
             }, index=pd.to_datetime(timestamps, unit='s'))
-            df.index.name = 'Date'
+            
+            df = df.dropna()
             
             if len(df) > 10:
                 st.success(f"✅ 顯示 {symbol} 真實數據")
                 return df
+        
+        # 如果 API 失敗，使用模擬數據
+        st.warning(f"⚠️ 無法獲取 {symbol} 真實數據，使用模擬數據展示功能")
+        return generate_mock_data(symbol, period, interval)
+        
     except Exception as e:
-        pass
-    
-    # 嘗試方法2: yfinance
-    try:
-        import yfinance as yf
-        df = yf.download(symbol, period=period, progress=False, timeout=10)
-        if df is not None and len(df) > 10:
-            st.success(f"✅ 顯示 {symbol} 真實數據")
-            return df
-    except:
-        pass
-    
-    # 如果都失敗，使用模擬數據
-    st.info(f"📊 顯示 {symbol} 模擬數據")
-    dates = pd.date_range(end=pd.Timestamp.now(), periods=252, freq='B')
-    np.random.seed(sum(ord(c) for c in symbol))
-    base_price = 50 + sum(ord(c) for c in symbol) % 200
-    trend = (sum(ord(c) for c in symbol) % 50) / 100
-    prices = base_price + np.cumsum(np.random.randn(252) * 2 + trend)
-    
-    df = pd.DataFrame({
-        'Open': prices * (0.98 + np.random.randn(252) * 0.01),
-        'High': prices * (1.00 + np.random.randn(252) * 0.02),
-        'Low': prices * (0.96 + np.random.randn(252) * 0.02),
-        'Close': prices,
-        'Volume': np.random.randint(1000000, 50000000, 252)
-    }, index=dates)
-    df.index.name = 'Date'
-    return df
+        st.warning(f"⚠️ 獲取數據失敗，使用模擬數據展示功能: {e}")
+        return generate_mock_data(symbol, period, interval)
 
 # 計算技術指標
-def calculate_indicators(df, short_period, long_period):
+def calculate_indicators(df):
+    """計算技術指標"""
     df = df.copy()
     
-    # 計算均線
-    df['SMA_short'] = df['Close'].rolling(window=short_period).mean()
-    df['SMA_long'] = df['Close'].rolling(window=long_period).mean()
-    
-    # 計算 RSI
+    # RSI
     delta = df['Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss
     df['RSI'] = 100 - (100 / (1 + rs))
     
-    # 計算 MACD
-    exp1 = df['Close'].ewm(span=12, adjust=False).mean()
-    exp2 = df['Close'].ewm(span=26, adjust=False).mean()
-    df['MACD'] = exp1 - exp2
-    df['Signal'] = df['MACD'].ewm(span=9, adjust=False).mean()
+    # 均線
+    df['MA5'] = df['Close'].rolling(5).mean()
+    df['MA20'] = df['Close'].rolling(20).mean()
+    df['MA50'] = df['Close'].rolling(50).mean()
+    
+    # 支撐/壓力
+    df['High_20'] = df['High'].rolling(20).max()
+    df['Low_20'] = df['Low'].rolling(20).min()
+    
+    # 成交量均線
+    df['Volume_MA'] = df['Volume'].rolling(20).mean()
     
     return df
 
-# 回測策略
-def backtest(df, initial_capital):
+# 突破策略訊號
+def breakout_signals(df, lookback=20, volume_mult=1.5):
+    """突破策略訊號"""
+    df = df.copy()
+    df['High_lookback'] = df['High'].rolling(lookback).max()
+    df['Volume_MA'] = df['Volume'].rolling(lookback).mean()
+    
+    # 買入訊號：價格突破新高 + 成交量放大
+    df['Buy_Signal'] = (df['Close'] > df['High_lookback'].shift(1)) & \
+                       (df['Volume'] > df['Volume_MA'] * volume_mult)
+    
+    # 賣出訊號：價格跌破前低
+    df['Low_lookback'] = df['Low'].rolling(lookback).min()
+    df['Sell_Signal'] = df['Close'] < df['Low_lookback'].shift(1)
+    
+    return df
+
+# 反轉策略訊號
+def reversal_signals(df, rsi_oversold=30, rsi_overbought=70):
+    """反轉策略訊號"""
+    df = df.copy()
+    
+    # 買入訊號：RSI超賣後回升
+    df['Buy_Signal'] = (df['RSI'] < rsi_oversold) & (df['RSI'].shift(1) < df['RSI'])
+    
+    # 賣出訊號：RSI超買後回落
+    df['Sell_Signal'] = (df['RSI'] > rsi_overbought) & (df['RSI'].shift(1) > df['RSI'])
+    
+    return df
+
+# 區間策略訊號
+def range_signals(df, period=20):
+    """區間策略訊號"""
+    df = df.copy()
+    df['Range_High'] = df['High'].rolling(period).max()
+    df['Range_Low'] = df['Low'].rolling(period).min()
+    
+    # 買入訊號：接近支撐
+    df['Buy_Signal'] = df['Close'] <= df['Range_Low'] * 1.01
+    
+    # 賣出訊號：接近壓力
+    df['Sell_Signal'] = df['Close'] >= df['Range_High'] * 0.99
+    
+    return df
+
+# 均線策略訊號
+def ma_crossover_signals(df, fast=10, slow=50):
+    """均線交叉策略訊號"""
+    df = df.copy()
+    df['MA_Fast'] = df['Close'].rolling(fast).mean()
+    df['MA_Slow'] = df['Close'].rolling(slow).mean()
+    
+    # 買入訊號：快線穿越慢線
+    df['Buy_Signal'] = (df['MA_Fast'] > df['MA_Slow']) & \
+                       (df['MA_Fast'].shift(1) <= df['MA_Slow'].shift(1))
+    
+    # 賣出訊號：快線跌破慢線
+    df['Sell_Signal'] = (df['MA_Fast'] < df['MA_Slow']) & \
+                        (df['MA_Fast'].shift(1) >= df['MA_Slow'].shift(1))
+    
+    return df
+
+# Gap and Go 策略訊號
+def gap_and_go_signals(df, gap_threshold=1.0, volume_mult=1.5):
+    """Gap and Go 策略 - 跳空缺口後順勢交易"""
+    df = df.copy()
+    
+    # 計算開盤跳空
+    df['Prev_Close'] = df['Close'].shift(1)
+    df['Gap'] = ((df['Open'] - df['Prev_Close']) / df['Prev_Close']) * 100
+    
+    # 成交量放大
+    df['Volume_MA'] = df['Volume'].rolling(20).mean()
+    
+    # 買入訊號：向上跳空且成交量放大
+    df['Buy_Signal'] = (df['Gap'] > gap_threshold) & (df['Volume'] > df['Volume_MA'] * volume_mult)
+    
+    # 賣出訊號：收盤跌破開盤
+    df['Sell_Signal'] = df['Close'] < df['Open']
+    
+    return df
+
+# 動能交易策略訊號
+def momentum_signals(df, period=14, threshold=2.0):
+    """動能交易策略 - 順勢追蹤"""
+    df = df.copy()
+    
+    # 計算動能
+    df['Momentum'] = df['Close'] - df['Close'].shift(period)
+    df['Momentum_Pct'] = (df['Close'] - df['Close'].shift(period)) / df['Close'].shift(period) * 100
+    
+    # 買入訊號：動能強勁向上
+    df['Buy_Signal'] = df['Momentum_Pct'] > threshold
+    
+    # 賣出訊號：動能反轉向下
+    df['Sell_Signal'] = df['Momentum_Pct'] < -threshold
+    
+    return df
+
+# VWAP 回歸策略訊號
+def vwap_regression_signals(df, tolerance=0.5):
+    """VWAP 回歸策略 - 價格回歸 VWAP"""
+    df = df.copy()
+    
+    # 計算 VWAP
+    df['Typical_Price'] = (df['High'] + df['Low'] + df['Close']) / 3
+    df['VWAP'] = (df['Typical_Price'] * df['Volume']).cumsum() / df['Volume'].cumsum()
+    
+    # 偏離度
+    df['VWAP_Deviation'] = ((df['Close'] - df['VWAP']) / df['VWAP']) * 100
+    
+    # 買入訊號：價格低於 VWAP 後回升
+    df['Buy_Signal'] = (df['VWAP_Deviation'] < -tolerance) & (df['VWAP_Deviation'] > df['VWAP_Deviation'].shift(1))
+    
+    # 賣出訊號：價格高於 VWAP 後回落
+    df['Sell_Signal'] = (df['VWAP_Deviation'] > tolerance) & (df['VWAP_Deviation'] < df['VWAP_Deviation'].shift(1))
+    
+    return df
+
+# 開盤區間突破策略訊號
+def opening_range_signals(df, minutes=15, threshold=0.5):
+    """開盤區間突破策略"""
+    df = df.copy()
+    
+    # 計算開盤區間
+    df['Open_Range_High'] = df['High'].rolling(minutes).max()
+    df['Open_Range_Low'] = df['Low'].rolling(minutes).min()
+    
+    # 買入訊號：突破開盤區間高點
+    df['Buy_Signal'] = (df['Close'] > df['Open_Range_High'].shift(1)) & \
+                       ((df['Close'] - df['Open_Range_High'].shift(1)) / df['Open_Range_High'].shift(1) * 100 > threshold)
+    
+    # 賣出訊號：跌破開盤區間低點
+    df['Sell_Signal'] = (df['Close'] < df['Open_Range_Low'].shift(1)) & \
+                        ((df['Open_Range_Low'].shift(1) - df['Close']) / df['Open_Range_Low'].shift(1) * 100 > threshold)
+    
+    return df
+
+# 回測函數
+def backtest(df, strategy_name, initial_capital=10000, position_pct=0.5):
+    """回測"""
     df = df.copy()
     
     # 初始化
-    df['Signal'] = 0
-    df.loc[df['SMA_short'] > df['SMA_long'], 'Signal'] = 1
-    df['Position'] = df['Signal'].diff()
-    
-    # 模擬交易
     capital = initial_capital
-    shares = 0
+    position = 0
+    entry_price = 0
     trades = []
-    portfolio_values = []  # 追蹤帳戶價值
+    portfolio_values = []
     
-    for i, row in df.iterrows():
-        # 計算當前帳戶價值
-        if shares > 0:
-            current_value = shares * row['Close']
-        else:
-            current_value = capital
-        portfolio_values.append({'date': i, 'value': current_value})
+    for i in range(1, len(df)):
+        row = df.iloc[i]
+        prev_row = df.iloc[i-1]
         
-        if pd.isna(row['Position']) or row['Position'] == 0:
-            continue
-            
-        if row['Position'] == 1:  # 買入訊號（金叉）
-            shares = capital / row['Close']
-            trades.append({
-                'date': i,
-                'type': 'BUY',
-                'price': row['Close'],
-                'shares': shares,
-                'capital': capital
-            })
-            capital = 0
-            
-        elif row['Position'] == -1:  # 賣出訊號（死叉）
+        # 買入訊號
+        if row.get('Buy_Signal', False) and position == 0:
+            shares = int((capital * position_pct) / row['Close'])
             if shares > 0:
-                final_capital = shares * row['Close']
+                cost = shares * row['Close']
+                position = shares
+                entry_price = row['Close']
+                capital -= cost
                 trades.append({
-                    'date': i,
-                    'type': 'SELL',
+                    'time': row.name,
+                    'type': 'BUY',
                     'price': row['Close'],
-                    'shares': shares,
-                    'capital': final_capital
+                    'shares': shares
                 })
-                capital = final_capital
-                shares = 0
+        
+        # 賣出訊號
+        elif row.get('Sell_Signal', False) and position > 0:
+            proceeds = position * row['Close']
+            profit = proceeds - (position * entry_price)
+            capital += proceeds
+            trades.append({
+                'time': row.name,
+                'type': 'SELL',
+                'price': row['Close'],
+                'shares': position,
+                'profit': profit
+            })
+            position = 0
+            entry_price = 0
+        
+        # 記錄投資組合價值
+        portfolio_value = capital + (position * row['Close']) if position > 0 else capital
+        portfolio_values.append(portfolio_value)
     
-    # 計算最終價值
-    if shares > 0:
-        final_value = shares * df.iloc[-1]['Close']
-    else:
-        final_value = capital
+    # 最終結算
+    if position > 0:
+        final_price = df.iloc[-1]['Close']
+        proceeds = position * final_price
+        trades.append({
+            'time': df.iloc[-1].name,
+            'type': 'SELL',
+            'price': final_price,
+            'shares': position,
+            'profit': proceeds - (position * entry_price)
+        })
+        capital = capital + proceeds
+        position = 0
     
-    # 計算勝率
-    winning_trades = 0
-    losing_trades = 0
-    for i in range(1, len(trades), 2):
-        if i < len(trades):
-            sell_capital = trades[i]['capital']
-            buy_capital = trades[i-1]['capital']
-            if sell_capital > buy_capital:
-                winning_trades += 1
-            else:
-                losing_trades += 1
+    # 計算統計
+    total_return = (capital - initial_capital) / initial_capital * 100
     
-    total_trades = winning_trades + losing_trades
-    win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+    winning_trades = [t for t in trades if t.get('profit', 0) > 0]
+    losing_trades = [t for t in trades if t.get('profit', 0) < 0]
     
-    return final_value, trades, portfolio_values, win_rate, winning_trades, losing_trades
+    win_rate = len(winning_trades) / len(trades) * 100 if len(trades) > 0 else 0
+    
+    avg_win = np.mean([t['profit'] for t in winning_trades]) if winning_trades else 0
+    avg_loss = np.mean([t['profit'] for t in losing_trades]) if losing_trades else 0
+    
+    return {
+        'final_capital': capital,
+        'total_return': total_return,
+        'trades': trades,
+        'portfolio_values': portfolio_values,
+        'win_rate': win_rate,
+        'total_trades': len(trades),
+        'avg_win': avg_win,
+        'avg_loss': avg_loss,
+        'max_drawdown': calculate_max_drawdown(portfolio_values) if portfolio_values else 0
+    }
+
+def calculate_max_drawdown(values):
+    """計算最大回撤"""
+    if not values:
+        return 0
+    peak = values[0]
+    max_dd = 0
+    for v in values:
+        if v > peak:
+            peak = v
+        dd = (peak - v) / peak * 100
+        if dd > max_dd:
+            max_dd = dd
+    return max_dd
 
 # 主程式
-if stock_symbol:
-    with st.spinner('載入數據中...'):
-        df = get_stock_data(stock_symbol, date_range)
-    
-    if df is not None and len(df) > 0:
-        # 計算指標
-        df = calculate_indicators(df, short_ma, long_ma)
+if st.button("🔄 執行回測", type="primary"):
+    with st.spinner("正在獲取數據..."):
+        df = get_intraday_data(symbol)
         
-        # 計算交易（先用於買賣標記）
-        final_value, trades, portfolio_values, win_rate, winning_trades, losing_trades = backtest(df, initial_capital)
-        
-        # 顯示基本資訊
-        col1, col2, col3, col4 = st.columns(4)
-        
-        current_price = df.iloc[-1]['Close']
-        price_change = df.iloc[-1]['Close'] - df.iloc[-2]['Close']
-        price_change_pct = (price_change / df.iloc[-2]['Close']) * 100
-        
-        with col1:
-            st.metric("目前股價", f"${current_price:.2f}")
-        with col2:
-            st.metric("漲跌", f"${price_change:.2f}", f"{price_change_pct:.2f}%")
-        with col3:
-            st.metric("RSI", f"{df.iloc[-1]['RSI']:.2f}")
-        with col4:
-            st.metric("MACD", f"{df.iloc[-1]['MACD']:.2f}")
-        
-        # 圖表 - K線圖 + 均線
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
-                           vertical_spacing=0.03, 
-                           subplot_titles=('股價 + 均線', '成交量'))
-        
-        # K線圖
-        fig.add_trace(go.Candlestick(
-            x=df.index,
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name='股價'
-        ), row=1, col=1)
-        
-        # 均線
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_short'], 
-                                 mode='lines', name=f'SMA {short_ma}',
-                                 line=dict(color='blue', width=1)), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(x=df.index, y=df['SMA_long'], 
-                                 mode='lines', name=f'SMA {long_ma}',
-                                 line=dict(color='red', width=1)), row=1, col=1)
-        
-        # 買賣標記
-        for trade in trades:
-            if trade['type'] == 'BUY':
-                fig.add_trace(go.Scatter(
-                    x=[trade['date']], 
-                    y=[trade['price']],
-                    mode='markers',
-                    marker=dict(symbol='triangle-up', size=15, color='green'),
-                    name='買入'
-                ), row=1, col=1)
+        if df is not None and len(df) > 0:
+            # 計算指標
+            df = calculate_indicators(df)
+            
+            # 選擇策略
+            if strategy == "突破策略 (Breakout)":
+                df = breakout_signals(df, lookback, volume_mult)
+            elif strategy == "反轉策略 (Reversal)":
+                df = reversal_signals(df, rsi_oversold, rsi_overbought)
+            elif strategy == "區間策略 (Range)":
+                df = range_signals(df, range_period)
+            elif strategy == "Gap and Go":
+                df = gap_and_go_signals(df, gap_threshold, volume_requirement)
+            elif strategy == "動能交易 (Momentum)":
+                df = momentum_signals(df, momentum_period, momentum_threshold)
+            elif strategy == "VWAP 回歸":
+                df = vwap_regression_signals(df, vwap_tolerance)
+            elif strategy == "開盤區間突破":
+                df = opening_range_signals(df, opening_range_min, breakout_threshold)
             else:
-                fig.add_trace(go.Scatter(
-                    x=[trade['date']], 
-                    y=[trade['price']],
-                    mode='markers',
-                    marker=dict(symbol='triangle-down', size=15, color='red'),
-                    name='賣出'
-                ), row=1, col=1)
-        
-        # 成交量
-        colors = ['green' if df.iloc[i]['Close'] >= df.iloc[i]['Open'] else 'red' 
-                  for i in range(len(df))]
-        fig.add_trace(go.Bar(x=df.index, y=df['Volume'], 
-                             name='成交量', marker_color=colors), row=2, col=1)
-        
-        fig.update_layout(
-            height=600,
-            showlegend=True,
-            xaxis_rangeslider_visible=False
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # RSI 圖
-        fig_rsi = go.Figure()
-        fig_rsi.add_trace(go.Scatter(x=df.index, y=df['RSI'], 
-                                     mode='lines', name='RSI',
-                                     line=dict(color='purple', width=2)))
-        fig_rsi.add_hline(y=70, line_dash="dash", line_color="red", 
-                         annotation_text="超買")
-        fig_rsi.add_hline(y=30, line_dash="dash", line_color="green", 
-                         annotation_text="超賣")
-        fig_rsi.update_layout(height=200, title="RSI 指標")
-        st.plotly_chart(fig_rsi, use_container_width=True)
-        
-        # 回測結果
-        st.markdown("---")
-        st.subheader("🔄 回測結果")
-        
-        returns = (final_value - initial_capital) / initial_capital * 100
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("初始資金", f"${initial_capital:,.2f}")
-        with col2:
-            st.metric("最終價值", f"${final_value:,.2f}")
-        with col3:
-            st.metric("報酬率", f"{returns:.2f}%", 
-                      delta=f"{returns:.2f}%")
-        with col4:
-            st.metric("勝率", f"{win_rate:.1f}%")
-        
-        # 帳戶價值趨勢圖
-        if portfolio_values:
-            st.markdown("### 📈 帳戶盈虧趨勢")
-            portfolio_df = pd.DataFrame(portfolio_values)
+                df = ma_crossover_signals(df, fast_ma, slow_ma)
             
-            fig_portfolio = go.Figure()
-            fig_portfolio.add_trace(go.Scatter(
-                x=portfolio_df['date'], 
-                y=portfolio_df['value'],
-                mode='lines',
-                name='帳戶價值',
-                line=dict(color='green', width=2)
+            # 執行回測
+            results = backtest(df, strategy, initial_capital, position_size/100)
+            
+            # 顯示結果
+            st.success("✅ 回測完成！")
+            
+            # 統計數據
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("💰 最終資金", f"${results['final_capital']:,.2f}")
+            col2.metric("📈 總報酬", f"{results['total_return']:.2f}%", 
+                       delta=f"{results['total_return']:.2f}%")
+            col3.metric("🎯 勝率", f"{results['win_rate']:.1f}%")
+            col4.metric("📉 最大回撤", f"{results['max_drawdown']:.2f}%")
+            
+            col5, col6 = st.columns(2)
+            col5.metric("總交易次數", results['total_trades'])
+            col6.metric("平均獲利/虧損", f"${results['avg_win']:.2f} / ${results['avg_loss']:.2f}")
+            
+            # 繪製圖表
+            st.subheader(f"📊 {symbol} 價格與交易訊號")
+            
+            fig = go.Figure()
+            
+            # K線
+            fig.add_trace(go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name='K線'
             ))
-            fig_portfolio.add_hline(y=initial_capital, line_dash="dash", 
-                                   line_color="gray", annotation_text="初始資金")
-            fig_portfolio.update_layout(
-                height=300,
-                xaxis_title="日期",
-                yaxis_title="帳戶價值 ($)"
+            
+            # 買入訊號
+            buy_signals = df[df['Buy_Signal'] == True]
+            fig.add_trace(go.Scatter(
+                x=buy_signals.index,
+                y=buy_signals['Close'],
+                mode='markers',
+                marker=dict(symbol='triangle-up', size=12, color='green'),
+                name='買入訊號'
+            ))
+            
+            # 賣出訊號
+            sell_signals = df[df['Sell_Signal'] == True]
+            fig.add_trace(go.Scatter(
+                x=sell_signals.index,
+                y=sell_signals['Close'],
+                mode='markers',
+                marker=dict(symbol='triangle-down', size=12, color='red'),
+                name='賣出訊號'
+            ))
+            
+            # 均線
+            fig.add_trace(go.Scatter(x=df.index, y=df['MA20'], name='MA20', line=dict(color='orange', width=1)))
+            fig.add_trace(go.Scatter(x=df.index, y=df['MA50'], name='MA50', line=dict(color='blue', width=1)))
+            
+            fig.update_layout(
+                xaxis_rangeslider_visible=False,
+                height=500
             )
-            st.plotly_chart(fig_portfolio, use_container_width=True)
-        
-        # 交易記錄
-        if trades:
-            st.markdown("### 📝 交易記錄")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.success(f"✅ 獲利交易: {winning_trades} 次")
-            with col2:
-                st.error(f"❌ 虧損交易: {losing_trades} 次")
+            st.plotly_chart(fig, use_container_width=True)
             
-            trades_df = pd.DataFrame(trades)
-            trades_df['date'] = trades_df['date'].dt.strftime('%Y-%m-%d')
-            st.dataframe(trades_df, use_container_width=True)
+            # 資金曲線
+            if results['portfolio_values']:
+                st.subheader("💵 資金曲線")
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(
+                    y=results['portfolio_values'],
+                    mode='lines',
+                    fill='tozeroy',
+                    line=dict(color='green')
+                ))
+                fig2.update_layout(height=300, xaxis_title="交易次數", yaxis_title="資金")
+                st.plotly_chart(fig2, use_container_width=True)
+            
+            # 交易記錄
+            if results['trades']:
+                st.subheader("📋 交易記錄")
+                trades_df = pd.DataFrame(results['trades'])
+                trades_df['time'] = trades_df['time'].astype(str)
+                st.dataframe(trades_df, use_container_width=True)
         else:
-            st.warning("沒有產生交易訊號")
-            
-    else:
-        st.error("無法獲取數據，請檢查股票代碼是否正確")
+            st.error("無法獲取數據，請檢查股票代碼")
+
+# 說明
+st.markdown("---")
+st.markdown("""
+### 📖 策略說明
+
+| 策略 | 原理 | 適合情境 |
+|------|------|----------|
+| **突破策略** | 價格突破近期高點時買入 | 趨勢明顯時 |
+| **反轉策略** | RSI超賣時買入，超買時賣出 | 區間震盪時 |
+| **區間策略** | 接近支撐買入，接近壓力賣出 | 區間整理時 |
+| **均線策略** | 短均線穿越長均線時交易 | 趨勢確認時 |
+
+⚠️ **風險提示**：日內交易風險極高，過去績效不代表未來表現，請謹慎評估！
+""")
