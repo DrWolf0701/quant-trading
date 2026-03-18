@@ -3,6 +3,4 @@ yfinance==0.2.36
 pandas==2.2.0
 numpy==1.26.4
 plotly==5.20.0
-weasyprint==60.2
-altair==5.3.0
-requests
+matplotlib>=3.0.0
