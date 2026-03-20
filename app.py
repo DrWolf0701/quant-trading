@@ -96,8 +96,8 @@ if page == "🤖 AI選股":
                 st.error(f"無法取得數據: {e}")
 
 elif page == "📈 量化交易":
-    exec(open("_量化交易系統.py").read())
+    exec(open("量化交易系統.py").read())
 elif page == "⚡ 日內交易":
-    exec(open("_日內交易系統.py").read())
+    exec(open("日內交易系統.py").read())
 elif page == "🎯 投資運勢":
-    exec(open("_投資運勢.py").read())
+    exec(open("投資運勢.py").read())
