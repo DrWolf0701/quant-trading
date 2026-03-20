@@ -7,12 +7,12 @@ import streamlit as st
 
 # 頁面設定
 st.set_page_config(
-    page_title="小熊美股投資",
+    page_title="雙均線量子交易系統",
     page_icon="🐻",
     layout="wide"
 )
 
-st.title("🐻 小熊美股投資")
+st.title("🐻 雙均線量子交易系統")
 st.markdown("---")
 
 # 側邊欄導航
